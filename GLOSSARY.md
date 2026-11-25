@@ -42,3 +42,6 @@
 | AggregatingMergeTree | Engine that merges rows with the same sorting key by combining their aggregate states. |
 | `-State` / `-Merge` | `countState()` stores a partial result that can still be combined; `countMerge()` combines partial results into the final number. Needed because distinct counts cannot simply be added. |
 | Backfill | A one-off copy of existing data into a new rollup, since a materialized view only sees inserts made after it exists. |
+| Benchmark | `cmd/bench`: the same seeded data loaded into PostgreSQL and ClickHouse, the same four questions asked of both, answers compared, then load time, disk size and median query time reported. |
+| Median of runs | Each query runs once to warm caches, then several times; the middle time is reported so one slow run does not distort the result. |
+| Compression | ClickHouse compresses each column file. Similar values stored next to each other (one column, sorted) compress far better than whole rows. |

@@ -66,6 +66,19 @@ go run ./cmd/loadgen -rate 5000 -duration 1m
 | `-duration` | `0` | stop after this long, `0` runs until Ctrl+C |
 | `-key` | `$EVENTLENS_WRITE_KEY` | write key |
 
+## Benchmark: PostgreSQL vs ClickHouse
+
+`cmd/bench` loads the same 20 million synthetic events into PostgreSQL (with an index on `(event_type, occurred_at)`)
+and into ClickHouse, checks that both answer four analytical queries identically, and reports load time, disk size
+and the median query time:
+
+```
+docker compose --profile bench up -d --wait
+go run ./cmd/bench -out docs/benchmark.md
+```
+
+Loading takes a few minutes. `-rows` changes the size, `-skip-load` reruns only the queries.
+
 ## Configuration
 
 | Variable | Default |
