@@ -1,0 +1,11 @@
+.git
+.github
+docs
+deploy
+*.md
+/eventlens
+/eventlens.exe
+/loadgen
+/loadgen.exe
+/bench
+/bench.exe

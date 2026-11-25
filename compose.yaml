@@ -47,6 +47,26 @@ services:
       - prometheus
       - clickhouse
 
+  eventlens:
+    image: eventlens:local
+    build: .
+    profiles: ["app"]
+    environment:
+      EVENTLENS_CLICKHOUSE_ADDR: clickhouse:9000
+      EVENTLENS_WRITE_KEY: dev-write-key
+    ports:
+      - "8080:8080"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  loadgen:
+    image: eventlens:local
+    build: .
+    profiles: ["load"]
+    entrypoint: ["/loadgen", "-url", "http://eventlens:8080", "-key", "dev-write-key"]
+    command: ["-rate", "3000"]
+
   postgres:
     image: postgres:18.7
     profiles: ["bench"]
