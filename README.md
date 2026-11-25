@@ -22,7 +22,8 @@ dashboards show the shop and the health of the pipeline live.
   honours `503`.
 - **Grafana dashboards as code**: a shop dashboard on ClickHouse and a pipeline dashboard on Prometheus metrics.
 - **Demo shop page** that sends events as you click.
-- **Benchmark** that loads the same 20 million events into PostgreSQL and ClickHouse and compares them.
+- **Benchmark** that loads the same 20 million events into PostgreSQL and ClickHouse and compares them: ClickHouse
+  answers 7 to 112 times faster and needs 5 times less disk.
 - Tests against a real ClickHouse (testcontainers-go), fake clocks for timing logic, CI on every push.
 
 ## Stack
@@ -208,6 +209,22 @@ go run ./cmd/bench -out docs/benchmark.md
 ```
 
 Loading takes a few minutes. `-rows` changes the size, `-skip-load` reruns only the queries.
+
+Results on a 16-CPU Windows machine with Docker Desktop, median of 3 runs ([full report](docs/benchmark.md)):
+
+| | PostgreSQL | ClickHouse | ClickHouse is |
+|---|---:|---:|---:|
+| Load time | 3m21.8s | 53.8s | 3.7x faster |
+| Disk size | 4.15 GiB | 822.8 MiB | 5.2x smaller |
+| Revenue per category, last 7 days | 422.7 ms | 7.5 ms | 56.6x faster |
+| Top 10 products by views, last 24 hours | 729.2 ms | 6.5 ms | 112.2x faster |
+| Distinct sessions per day, last 30 days | 28501.6 ms | 760.5 ms | 37.5x faster |
+| Events per type and device, whole table | 1139.7 ms | 153.9 ms | 7.4x faster |
+
+The biggest gap is on the narrow queries, even though PostgreSQL uses its index there: the index finds the rows, but
+they are spread across the whole table, so PostgreSQL reads hundreds of thousands of pages with every column. In
+ClickHouse the sorting key keeps those rows next to each other, and it reads only the few columns the query names.
+The smallest gap is the full-table count, where both scan everything and the work per row is trivial.
 
 ## Configuration
 
