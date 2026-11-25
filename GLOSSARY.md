@@ -30,3 +30,7 @@
 | Session | One visit to the shop, identified by `session_id`. The load generator plays whole sessions: a page view, a few product views, maybe add to cart, checkout and purchase. |
 | Funnel | The steps from product view to purchase. Each step has fewer sessions than the one before; the drop between steps is what a shop wants to improve. |
 | Zipf distribution | A "few items get most of the attention" distribution. The load generator picks products with it, so a handful of products get most of the views, as in a real shop. |
+| Prometheus | Time-series database that scrapes `/metrics` every 2 seconds and stores the numbers. |
+| Counter / gauge / histogram | Counter only goes up (events accepted). Gauge goes up and down (queue depth). Histogram counts observations in buckets so percentiles can be computed (flush duration). |
+| p95 | 95th percentile: 95 % of flushes were at least this fast. Shows the slow tail that an average hides. |
+| Provisioning | Grafana data sources and dashboards defined as files in the repository and loaded on start, instead of clicking them together by hand. |

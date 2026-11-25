@@ -18,6 +18,14 @@ type Writer interface {
 	InsertEvents(ctx context.Context, token string, events []event.Event) error
 }
 
+type Observer interface {
+	FlushAttempt(events int, took time.Duration, err error)
+}
+
+type noopObserver struct{}
+
+func (noopObserver) FlushAttempt(int, time.Duration, error) {}
+
 type Ticker interface {
 	C() <-chan time.Time
 	Stop()
@@ -32,6 +40,7 @@ type Options struct {
 	RetryMax      time.Duration
 	DrainTimeout  time.Duration
 	Logger        *slog.Logger
+	Observer      Observer
 	NewTicker     func(time.Duration) Ticker
 }
 
@@ -62,6 +71,9 @@ func New(writer Writer, opts Options) *Pipeline {
 	}
 	if opts.NewTicker == nil {
 		opts.NewTicker = newRealTicker
+	}
+	if opts.Observer == nil {
+		opts.Observer = noopObserver{}
 	}
 	return &Pipeline{
 		writer: writer,
@@ -154,6 +166,7 @@ func (p *Pipeline) flush(batch []event.Event) []event.Event {
 	for attempt := 1; ; attempt++ {
 		start := time.Now()
 		err := p.write(token, batch)
+		p.opts.Observer.FlushAttempt(len(batch), time.Since(start), err)
 		if err == nil {
 			p.opts.Logger.Debug("flushed", "events", len(batch), "attempt", attempt,
 				"duration_ms", time.Since(start).Milliseconds())

@@ -6,9 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/hmzckd/eventlens/internal/event"
 	"github.com/hmzckd/eventlens/internal/ingest"
@@ -30,9 +28,11 @@ type invalidEvent struct {
 	Message string `json:"message"`
 }
 
-func handleEvents(logger *slog.Logger, writeKey string, sink Sink, now func() time.Time) http.HandlerFunc {
+func handleEvents(opts Options) http.HandlerFunc {
+	logger, sink, rec := opts.Logger, opts.Sink, opts.Recorder
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !validWriteKey(r.Header.Get("X-Write-Key"), writeKey) {
+		if !validWriteKey(r.Header.Get("X-Write-Key"), opts.WriteKey) {
+			rec.RequestRejected("unauthorized")
 			writeProblem(w, http.StatusUnauthorized, "Unauthorized", "missing or wrong X-Write-Key header", nil)
 			return
 		}
@@ -40,6 +40,7 @@ func handleEvents(logger *slog.Logger, writeKey string, sink Sink, now func() ti
 		var req eventsRequest
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			rec.RequestRejected("invalid")
 			var tooLarge *http.MaxBytesError
 			if errors.As(err, &tooLarge) {
 				writeProblem(w, http.StatusRequestEntityTooLarge, "Request too large", "the body must be at most 1 MiB", nil)
@@ -49,16 +50,18 @@ func handleEvents(logger *slog.Logger, writeKey string, sink Sink, now func() ti
 			return
 		}
 		if len(req.Events) == 0 {
+			rec.RequestRejected("invalid")
 			writeProblem(w, http.StatusBadRequest, "No events", `send at least one event in "events"`, nil)
 			return
 		}
 		if len(req.Events) > event.MaxBatch {
+			rec.RequestRejected("invalid")
 			writeProblem(w, http.StatusBadRequest, "Too many events",
 				fmt.Sprintf("send at most %d events per request, got %d", event.MaxBatch, len(req.Events)), nil)
 			return
 		}
 
-		at := now()
+		at := opts.Now()
 		events := make([]event.Event, 0, len(req.Events))
 		var invalid []invalidEvent
 		for i, in := range req.Events {
@@ -72,6 +75,7 @@ func handleEvents(logger *slog.Logger, writeKey string, sink Sink, now func() ti
 			events = append(events, ev)
 		}
 		if len(invalid) > 0 {
+			rec.RequestRejected("invalid")
 			writeProblem(w, http.StatusBadRequest, "Invalid events",
 				fmt.Sprintf("%d of %d events are invalid, none were accepted", len(invalid), len(req.Events)), invalid)
 			return
@@ -79,6 +83,7 @@ func handleEvents(logger *slog.Logger, writeKey string, sink Sink, now func() ti
 
 		if err := sink.Accept(r.Context(), events); err != nil {
 			if errors.Is(err, ingest.ErrQueueFull) {
+				rec.RequestRejected("queue_full")
 				w.Header().Set("Retry-After", "1")
 				writeProblem(w, http.StatusServiceUnavailable, "Queue full", "the collector is busy, try again", nil)
 				return
@@ -87,6 +92,7 @@ func handleEvents(logger *slog.Logger, writeKey string, sink Sink, now func() ti
 			writeProblem(w, http.StatusServiceUnavailable, "Unavailable", "events could not be accepted, try again", nil)
 			return
 		}
+		rec.EventsAccepted(len(events))
 		writeJSON(w, http.StatusAccepted, map[string]int{"accepted": len(events)})
 	}
 }

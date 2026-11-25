@@ -9,13 +9,20 @@ Work in progress. See [GLOSSARY.md](GLOSSARY.md) and [docs/adr](docs/adr).
 
 Requires Go 1.27 and Docker.
 
-1. Start ClickHouse: `docker compose up -d --wait`
+1. Start ClickHouse, Prometheus and Grafana: `docker compose up -d --wait`
 2. Start the service (it applies the migrations on start):
    ```
    $env:EVENTLENS_WRITE_KEY = "dev-write-key"   # PowerShell; export EVENTLENS_WRITE_KEY=dev-write-key on Linux/macOS
    go run ./cmd/eventlens
    ```
 3. Open `http://localhost:8080/health`
+
+## Observability
+
+The collector exposes Prometheus metrics on `/metrics`. Prometheus (`http://localhost:9090`) scrapes the collector
+running on your machine every 2 seconds, and Grafana (`http://localhost:3000`, no login, local use only) opens the
+provisioned **EventLens - Pipeline** dashboard: accepted vs written events per second, queue depth against capacity,
+rejected requests by reason, flush duration p50/p95, average batch size and failed insert attempts.
 
 ## Load generator
 

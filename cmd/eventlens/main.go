@@ -15,6 +15,7 @@ import (
 	"github.com/hmzckd/eventlens/internal/config"
 	"github.com/hmzckd/eventlens/internal/httpapi"
 	"github.com/hmzckd/eventlens/internal/ingest"
+	"github.com/hmzckd/eventlens/internal/metrics"
 	"github.com/hmzckd/eventlens/internal/store"
 )
 
@@ -55,12 +56,15 @@ func run() error {
 	}
 	logger.Info("clickhouse ready", "addr", cfg.ClickHouseAddr, "database", cfg.ClickHouseDatabase)
 
+	m := metrics.New()
 	pipeline := ingest.New(db, ingest.Options{
 		Capacity:      cfg.QueueCapacity,
 		BatchSize:     cfg.BatchSize,
 		FlushInterval: cfg.FlushInterval,
 		Logger:        logger,
+		Observer:      m,
 	})
+	m.WatchQueue(pipeline)
 	pipelineCtx, stopPipeline := context.WithCancel(context.Background())
 	pipelineDone := make(chan struct{})
 	go func() {
@@ -81,6 +85,8 @@ func run() error {
 			DB:       db,
 			WriteKey: cfg.WriteKey,
 			Sink:     pipeline,
+			Recorder: m,
+			Metrics:  m.Handler(),
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,

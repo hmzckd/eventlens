@@ -186,3 +186,36 @@ func TestPostEventsReturns503WhenTheSinkFails(t *testing.T) {
 		}
 	}
 }
+
+type countingRecorder struct {
+	accepted int
+	rejected map[string]int
+}
+
+func (c *countingRecorder) EventsAccepted(n int)          { c.accepted += n }
+func (c *countingRecorder) RequestRejected(reason string) { c.rejected[reason]++ }
+
+func TestPostEventsRecordsWhatHappened(t *testing.T) {
+	rec := &countingRecorder{rejected: map[string]int{}}
+	sink := &recordingSink{}
+	h := NewHandler(Options{
+		Logger: discardLogger(), DB: fakePinger{}, WriteKey: testWriteKey, Sink: sink,
+		Now: func() time.Time { return testNow }, Recorder: rec,
+	})
+
+	postEvents(t, h, testWriteKey, batch(4))
+	postEvents(t, h, "wrong", batch(1))
+	postEvents(t, h, testWriteKey, batch(0))
+	sink.err = ingest.ErrQueueFull
+	postEvents(t, h, testWriteKey, batch(2))
+
+	if rec.accepted != 4 {
+		t.Errorf("accepted = %d, want 4", rec.accepted)
+	}
+	want := map[string]int{"unauthorized": 1, "invalid": 1, "queue_full": 1}
+	for reason, n := range want {
+		if rec.rejected[reason] != n {
+			t.Errorf("rejected[%s] = %d, want %d", reason, rec.rejected[reason], n)
+		}
+	}
+}

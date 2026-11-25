@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -25,7 +26,15 @@ func logRequests(logger *slog.Logger, next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		logger.Info("request",
+
+		level := slog.LevelDebug
+		switch {
+		case rec.status >= 500:
+			level = slog.LevelWarn
+		case rec.status >= 400:
+			level = slog.LevelInfo
+		}
+		logger.Log(context.Background(), level, "request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,
