@@ -15,7 +15,8 @@ func (s *Store) InsertEvents(ctx context.Context, token string, events []event.E
 	}
 	if token != "" {
 		ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
-			"insert_deduplication_token": token,
+			"insert_deduplication_token":                         token,
+			"deduplicate_blocks_in_dependent_materialized_views": 1,
 		}))
 	}
 	batch, err := s.conn.PrepareBatch(ctx, "INSERT INTO events")

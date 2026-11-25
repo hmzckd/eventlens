@@ -29,6 +29,10 @@ ENGINE = MergeTree
 ORDER BY version`
 
 func (s *Store) Migrate(ctx context.Context) error {
+	return s.MigrateTo(ctx, ^uint32(0))
+}
+
+func (s *Store) MigrateTo(ctx context.Context, target uint32) error {
 	all, err := loadMigrations()
 	if err != nil {
 		return err
@@ -56,7 +60,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	}
 
 	for _, m := range all {
-		if applied[m.version] {
+		if applied[m.version] || m.version > target {
 			continue
 		}
 		if err := s.conn.Exec(ctx, m.sql); err != nil {

@@ -23,11 +23,11 @@ const funnelStepWindow = time.Hour
 
 func (s *Store) TopProducts(ctx context.Context, since time.Time, limit int) ([]ProductStat, error) {
 	rows, err := s.conn.Query(ctx, `
-		SELECT product_id, count() AS views, uniq(session_id) AS visitors
-		FROM events
-		WHERE event_type = 'product_view' AND occurred_at >= ?
+		SELECT product_id, countMerge(views) AS total_views, uniqMerge(visitors) AS total_visitors
+		FROM product_views_1m
+		WHERE minute >= toStartOfMinute(?)
 		GROUP BY product_id
-		ORDER BY views DESC, product_id
+		ORDER BY total_views DESC, product_id
 		LIMIT ?`, since, limit)
 	if err != nil {
 		return nil, fmt.Errorf("top products: %w", err)

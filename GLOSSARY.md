@@ -37,3 +37,8 @@
 | `windowFunnel` | ClickHouse aggregate that, per session, returns how many funnel steps happened in order within a time window (here 1 hour). |
 | `uniq` vs `uniqExact` | `uniq` estimates the number of distinct values with a small fixed amount of memory (error well under 1 %). `uniqExact` keeps every value and is exact but slower and memory hungry. |
 | Client duplicate | The same event (same `event_id`) sent twice by a client, for example after a timeout. Stored twice; `count()` sees both, `uniqExact(event_id)` sees one. |
+| Materialized view | In ClickHouse, an insert trigger: each block inserted into `events` is transformed by the view's SELECT and written into a target table. It does not re-read old data. |
+| Rollup | A smaller table with pre-aggregated numbers (here views per product per minute) that dashboards read instead of raw events. |
+| AggregatingMergeTree | Engine that merges rows with the same sorting key by combining their aggregate states. |
+| `-State` / `-Merge` | `countState()` stores a partial result that can still be combined; `countMerge()` combines partial results into the final number. Needed because distinct counts cannot simply be added. |
+| Backfill | A one-off copy of existing data into a new rollup, since a materialized view only sees inserts made after it exists. |
