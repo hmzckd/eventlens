@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EventLens demo shop</title>
+<style>
+  :root { --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #677084; --accent: #2f6fde; --ok: #1f8f4e; --bad: #c2372b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 16px 24px; background: var(--card); border-bottom: 1px solid #e3e6eb; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  header h1 { font-size: 20px; margin: 0; }
+  header a { color: var(--accent); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; padding: 24px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border: 1px solid #e3e6eb; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .card h2 { font-size: 16px; margin: 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .price { font-weight: 600; }
+  button { border: 1px solid #cfd5df; background: #fff; border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; font-size: 14px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+  aside { background: var(--card); border: 1px solid #e3e6eb; border-radius: 10px; padding: 16px; align-self: start; }
+  aside h2 { font-size: 16px; margin: 0 0 8px; }
+  ol { list-style: none; padding: 0; margin: 0; font-size: 13px; font-family: ui-monospace, monospace; max-height: 60vh; overflow: auto; }
+  li { padding: 4px 0; border-bottom: 1px solid #eef0f3; display: flex; justify-content: space-between; gap: 8px; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>EventLens demo shop</h1>
+  <span class="muted">Session <code id="session"></code> · <a href="http://localhost:3000/d/eventlens-shop" target="_blank" rel="noopener">open the dashboard</a></span>
+</header>
+<main>
+  <section class="grid" id="products"></section>
+  <aside>
+    <h2>Events sent</h2>
+    <ol id="log"></ol>
+  </aside>
+</main>
+<script>
+const writeKey = {{.WriteKey}};
+const products = [
+  { id: "p-001", name: "Running shoes", category: "shoes", price: 249900 },
+  { id: "p-002", name: "Wireless earbuds", category: "electronics", price: 189900 },
+  { id: "p-003", name: "Go programming book", category: "books", price: 64900 },
+  { id: "p-004", name: "Rain jacket", category: "clothing", price: 159900 },
+  { id: "p-005", name: "Coffee grinder", category: "home", price: 99900 },
+  { id: "p-006", name: "Puzzle 1000 pieces", category: "toys", price: 34900 },
+  { id: "p-007", name: "Yoga mat", category: "sports", price: 44900 },
+  { id: "p-008", name: "Sunscreen SPF 50", category: "beauty", price: 29900 }
+];
+
+function sessionId() {
+  try {
+    let id = sessionStorage.getItem("eventlens-session");
+    if (!id) { id = crypto.randomUUID(); sessionStorage.setItem("eventlens-session", id); }
+    return id;
+  } catch (e) {
+    return crypto.randomUUID();
+  }
+}
+const session = sessionId();
+document.getElementById("session").textContent = session.slice(0, 8);
+
+function device() {
+  if (window.innerWidth < 700) return "mobile";
+  if (window.innerWidth < 1100) return "tablet";
+  return "desktop";
+}
+
+function log(text, ok) {
+  const li = document.createElement("li");
+  const left = document.createElement("span");
+  left.textContent = new Date().toLocaleTimeString() + " " + text;
+  const right = document.createElement("span");
+  right.textContent = ok;
+  right.className = String(ok).startsWith("2") ? "ok" : "bad";
+  li.append(left, right);
+  const list = document.getElementById("log");
+  list.prepend(li);
+}
+
+async function send(type, product, url) {
+  const ev = {
+    event_id: crypto.randomUUID(),
+    type: type,
+    occurred_at: new Date().toISOString(),
+    session_id: session,
+    product_id: product ? product.id : "",
+    category: product ? product.category : "",
+    price: type === "purchase" ? product.price : 0,
+    country: "TR",
+    device: device(),
+    url: url
+  };
+  const body = JSON.stringify({ events: [ev] });
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    let res;
+    try {
+      res = await fetch("/v1/events", { method: "POST", headers: { "Content-Type": "application/json", "X-Write-Key": writeKey }, body: body });
+    } catch (e) {
+      log(type, "network error");
+      return;
+    }
+    if (res.status !== 503) {
+      log(type + (product ? " " + product.id : ""), res.status);
+      return;
+    }
+    const wait = Number(res.headers.get("Retry-After") || "1");
+    log(type + " busy, retrying in " + wait + "s", 503);
+    await new Promise(r => setTimeout(r, wait * 1000));
+  }
+}
+
+function render() {
+  const grid = document.getElementById("products");
+  for (const p of products) {
+    const card = document.createElement("article");
+    card.className = "card";
+    const h = document.createElement("h2");
+    h.textContent = p.name;
+    const meta = document.createElement("div");
+    meta.className = "muted";
+    meta.textContent = p.id + " · " + p.category;
+    const price = document.createElement("div");
+    price.className = "price";
+    price.textContent = (p.price / 100).toLocaleString("tr-TR", { style: "currency", currency: "TRY" });
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const view = document.createElement("button");
+    view.textContent = "View";
+    view.onclick = () => send("product_view", p, "/products/" + p.id);
+    const cart = document.createElement("button");
+    cart.textContent = "Add to cart";
+    cart.onclick = () => send("add_to_cart", p, "/products/" + p.id);
+    const buy = document.createElement("button");
+    buy.textContent = "Buy now";
+    buy.className = "primary";
+    buy.onclick = async () => {
+      await send("checkout_start", p, "/checkout");
+      await send("purchase", p, "/checkout/done");
+    };
+    actions.append(view, cart, buy);
+    card.append(h, meta, price, actions);
+    grid.append(card);
+  }
+}
+
+render();
+send("page_view", null, "/");
+</script>
+</body>
+</html>

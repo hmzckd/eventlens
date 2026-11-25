@@ -7,3 +7,15 @@ datasources:
     access: proxy
     url: http://prometheus:9090
     isDefault: true
+
+  - name: ClickHouse
+    uid: clickhouse
+    type: grafana-clickhouse-datasource
+    jsonData:
+      host: clickhouse
+      port: 9000
+      protocol: native
+      username: eventlens
+      defaultDatabase: eventlens
+    secureJsonData:
+      password: eventlens

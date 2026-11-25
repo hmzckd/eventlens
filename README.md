@@ -31,10 +31,23 @@ No write key needed; meant for dashboards on a private network.
 
 ## Observability
 
-The collector exposes Prometheus metrics on `/metrics`. Prometheus (`http://localhost:9090`) scrapes the collector
-running on your machine every 2 seconds, and Grafana (`http://localhost:3000`, no login, local use only) opens the
-provisioned **EventLens - Pipeline** dashboard: accepted vs written events per second, queue depth against capacity,
-rejected requests by reason, flush duration p50/p95, average batch size and failed insert attempts.
+Grafana (`http://localhost:3000`, no login, local use only) starts with two provisioned dashboards. On its first
+start it downloads the official ClickHouse data source plugin, so it needs internet access once.
+
+- **EventLens - Shop** (ClickHouse): events per second by type, most viewed products from the rollup, the funnel,
+  sessions by country, revenue by category, active sessions and the p95 delay between `occurred_at` and
+  `received_at`.
+- **EventLens - Pipeline** (Prometheus): accepted vs written events per second, queue depth against capacity,
+  rejected requests by reason, flush duration p50/p95, average batch size and failed insert attempts. The collector
+  exposes these on `/metrics`, and Prometheus (`http://localhost:9090`) scrapes the collector running on your machine
+  every 2 seconds.
+
+## Demo shop
+
+`http://localhost:8080/demo` is a small shop page. It sends a `page_view` on load and `product_view`,
+`add_to_cart`, `checkout_start` and `purchase` events as you click, and lists each answer. Keep the Shop dashboard
+open next to it to watch your clicks arrive. The page carries the write key, which is fine because a write key can
+only add events, never read them.
 
 ## Load generator
 

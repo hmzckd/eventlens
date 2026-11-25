@@ -42,6 +42,7 @@ func NewHandler(opts Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /health", handleHealth(opts.DB))
 	mux.Handle("POST /v1/events", handleEvents(opts))
+	mux.Handle("GET /demo", handleDemo(opts.WriteKey))
 	mux.Handle("GET /v1/stats/top-products", handleTopProducts(opts))
 	mux.Handle("GET /v1/stats/funnel", handleFunnel(opts))
 	mux.Handle("GET /v1/stats/active-users", handleActiveUsers(opts))
