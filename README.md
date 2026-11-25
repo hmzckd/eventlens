@@ -60,7 +60,7 @@ Requires Go 1.27 and Docker.
 | 400 | Bad JSON, no events, more than 500, or any invalid event (problem+json lists each one; none are stored) |
 | 401 | Missing or wrong `X-Write-Key` |
 | 413 | Body larger than 1 MiB |
-| 503 | The queue is full, try again |
+| 503 | The queue is full (for example while ClickHouse is down). The `Retry-After: 1` header says when to retry. |
 
 Event types: `page_view`, `product_view`, `add_to_cart`, `checkout_start`, `purchase`. `occurred_at` may be at most
 5 minutes in the future and 24 hours in the past. Prices are in kuruş.

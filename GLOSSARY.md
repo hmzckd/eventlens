@@ -23,3 +23,7 @@
 | Reservation | Before a request enqueues its events, it adds their count to a counter. If the total would exceed the capacity, it takes them back and the whole request is refused, so a request is never half accepted. |
 | Graceful shutdown | On Ctrl+C or SIGTERM: stop taking requests, write everything still queued, then exit. |
 | Loss window | What can be lost on a crash: the events still in the queue. Documented in ADR 0002. |
+| Backpressure | A full queue pushes back on producers (`503` + `Retry-After`) instead of growing or silently dropping events. |
+| Unknown outcome | An insert whose answer was lost. The data may or may not be stored, so the only safe move is to retry in a way that cannot duplicate. |
+| Deduplication token | `insert_deduplication_token`: a random id per batch, reused on every retry. ClickHouse skips a block whose token it has seen within `non_replicated_deduplication_window`. |
+| Exponential backoff | Waiting longer after each failed attempt (100 ms, 200 ms, 400 ms ... up to 5 s) so a struggling server is not hammered. |

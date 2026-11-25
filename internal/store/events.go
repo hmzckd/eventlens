@@ -4,12 +4,19 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
+
 	"github.com/hmzckd/eventlens/internal/event"
 )
 
-func (s *Store) InsertEvents(ctx context.Context, events []event.Event) error {
+func (s *Store) InsertEvents(ctx context.Context, token string, events []event.Event) error {
 	if len(events) == 0 {
 		return nil
+	}
+	if token != "" {
+		ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
+			"insert_deduplication_token": token,
+		}))
 	}
 	batch, err := s.conn.PrepareBatch(ctx, "INSERT INTO events")
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/google/uuid"
 
 	"github.com/hmzckd/eventlens/internal/chtest"
@@ -30,7 +31,7 @@ func TestInsertEventsStoresEveryColumn(t *testing.T) {
 		Device:     "desktop",
 		URL:        "/checkout",
 	}
-	if err := s.InsertEvents(ctx, []event.Event{in}); err != nil {
+	if err := s.InsertEvents(ctx, "", []event.Event{in}); err != nil {
 		t.Fatalf("InsertEvents: %v", err)
 	}
 
@@ -60,7 +61,7 @@ func TestEveryInsertCreatesANewPart(t *testing.T) {
 		t.Fatalf("stop merges: %v", err)
 	}
 	for i := 0; i < 3; i++ {
-		if err := s.InsertEvents(ctx, chtest.Events(1, time.Now())); err != nil {
+		if err := s.InsertEvents(ctx, "", chtest.Events(1, time.Now())); err != nil {
 			t.Fatalf("insert %d: %v", i, err)
 		}
 	}
@@ -75,4 +76,35 @@ func TestEveryInsertCreatesANewPart(t *testing.T) {
 	if parts != 3 {
 		t.Fatalf("active parts = %d, want 3 (one per insert)", parts)
 	}
+}
+
+func TestTheSameTokenIsWrittenOnlyOnce(t *testing.T) {
+	ctx := context.Background()
+	s, conn := chtest.Store(t)
+	events := chtest.Events(100, time.Now())
+
+	for i := 0; i < 2; i++ {
+		if err := s.InsertEvents(ctx, "batch-1", events); err != nil {
+			t.Fatalf("insert %d: %v", i+1, err)
+		}
+	}
+	if got := countEvents(t, conn); got != 100 {
+		t.Fatalf("rows after the same batch twice = %d, want 100", got)
+	}
+
+	if err := s.InsertEvents(ctx, "batch-2", events); err != nil {
+		t.Fatal(err)
+	}
+	if got := countEvents(t, conn); got != 200 {
+		t.Fatalf("rows after a new token = %d, want 200", got)
+	}
+}
+
+func countEvents(t *testing.T, conn driver.Conn) uint64 {
+	t.Helper()
+	var n uint64
+	if err := conn.QueryRow(context.Background(), "SELECT count() FROM events").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
 }

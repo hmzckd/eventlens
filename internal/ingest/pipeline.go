@@ -7,13 +7,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/hmzckd/eventlens/internal/event"
 )
 
 var ErrQueueFull = errors.New("event queue is full")
 
 type Writer interface {
-	InsertEvents(ctx context.Context, events []event.Event) error
+	InsertEvents(ctx context.Context, token string, events []event.Event) error
 }
 
 type Ticker interface {
@@ -26,20 +28,34 @@ type Options struct {
 	BatchSize     int
 	FlushInterval time.Duration
 	FlushTimeout  time.Duration
+	RetryMin      time.Duration
+	RetryMax      time.Duration
+	DrainTimeout  time.Duration
 	Logger        *slog.Logger
 	NewTicker     func(time.Duration) Ticker
 }
 
 type Pipeline struct {
-	writer Writer
-	opts   Options
-	queue  chan event.Event
-	queued atomic.Int64
+	writer  Writer
+	opts    Options
+	queue   chan event.Event
+	queued  atomic.Int64
+	dropped atomic.Int64
+	giveUp  chan struct{}
 }
 
 func New(writer Writer, opts Options) *Pipeline {
 	if opts.FlushTimeout == 0 {
 		opts.FlushTimeout = 10 * time.Second
+	}
+	if opts.RetryMin == 0 {
+		opts.RetryMin = 100 * time.Millisecond
+	}
+	if opts.RetryMax == 0 {
+		opts.RetryMax = 5 * time.Second
+	}
+	if opts.DrainTimeout == 0 {
+		opts.DrainTimeout = 10 * time.Second
 	}
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
@@ -51,6 +67,7 @@ func New(writer Writer, opts Options) *Pipeline {
 		writer: writer,
 		opts:   opts,
 		queue:  make(chan event.Event, opts.Capacity),
+		giveUp: make(chan struct{}),
 	}
 }
 
@@ -74,9 +91,19 @@ func (p *Pipeline) Capacity() int {
 	return p.opts.Capacity
 }
 
+func (p *Pipeline) Dropped() int64 {
+	return p.dropped.Load()
+}
+
 func (p *Pipeline) Run(ctx context.Context) {
 	ticker := p.opts.NewTicker(p.opts.FlushInterval)
 	defer ticker.Stop()
+
+	go func() {
+		<-ctx.Done()
+		time.Sleep(p.opts.DrainTimeout)
+		close(p.giveUp)
+	}()
 
 	batch := make([]event.Event, 0, p.opts.BatchSize)
 	for {
@@ -111,23 +138,45 @@ func (p *Pipeline) drain(batch []event.Event) {
 			if len(batch) > 0 {
 				p.flush(batch)
 			}
-			p.opts.Logger.Info("event queue drained")
+			if lost := p.dropped.Load(); lost > 0 {
+				p.opts.Logger.Error("event queue drained with losses", "dropped_events", lost)
+			} else {
+				p.opts.Logger.Info("event queue drained")
+			}
 			return
 		}
 	}
 }
 
 func (p *Pipeline) flush(batch []event.Event) []event.Event {
+	token := uuid.NewString()
+	wait := p.opts.RetryMin
+	for attempt := 1; ; attempt++ {
+		start := time.Now()
+		err := p.write(token, batch)
+		if err == nil {
+			p.opts.Logger.Debug("flushed", "events", len(batch), "attempt", attempt,
+				"duration_ms", time.Since(start).Milliseconds())
+			return batch[:0]
+		}
+		p.opts.Logger.Warn("flush failed, will retry", "events", len(batch), "attempt", attempt,
+			"retry_in", wait.String(), "error", err)
+
+		select {
+		case <-time.After(wait):
+		case <-p.giveUp:
+			p.dropped.Add(int64(len(batch)))
+			p.opts.Logger.Error("giving up on batch during shutdown", "events", len(batch), "error", err)
+			return batch[:0]
+		}
+		wait = min(wait*2, p.opts.RetryMax)
+	}
+}
+
+func (p *Pipeline) write(token string, batch []event.Event) error {
 	ctx, cancel := context.WithTimeout(context.Background(), p.opts.FlushTimeout)
 	defer cancel()
-
-	start := time.Now()
-	if err := p.writer.InsertEvents(ctx, batch); err != nil {
-		p.opts.Logger.Error("flush failed, batch dropped", "events", len(batch), "error", err)
-	} else {
-		p.opts.Logger.Debug("flushed", "events", len(batch), "duration_ms", time.Since(start).Milliseconds())
-	}
-	return batch[:0]
+	return p.writer.InsertEvents(ctx, token, batch)
 }
 
 type realTicker struct{ t *time.Ticker }

@@ -168,6 +168,16 @@ func TestPostEventsRejectsHugeBodies(t *testing.T) {
 	}
 }
 
+func TestPostEventsAsksTheClientToRetryWhenTheQueueIsFull(t *testing.T) {
+	rec := postEvents(t, newEventsHandler(&recordingSink{err: ingest.ErrQueueFull}), testWriteKey, batch(1))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+	if got := rec.Header().Get("Retry-After"); got != "1" {
+		t.Fatalf("Retry-After = %q, want 1", got)
+	}
+}
+
 func TestPostEventsReturns503WhenTheSinkFails(t *testing.T) {
 	for _, err := range []error{ingest.ErrQueueFull, errors.New("something else")} {
 		rec := postEvents(t, newEventsHandler(&recordingSink{err: err}), testWriteKey, batch(1))

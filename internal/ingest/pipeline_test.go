@@ -28,7 +28,7 @@ func newRecordingWriter() *recordingWriter {
 	return &recordingWriter{flushed: make(chan int, 100)}
 }
 
-func (w *recordingWriter) InsertEvents(_ context.Context, events []event.Event) error {
+func (w *recordingWriter) InsertEvents(_ context.Context, _ string, events []event.Event) error {
 	w.mu.Lock()
 	w.batches = append(w.batches, append([]event.Event(nil), events...))
 	w.mu.Unlock()
@@ -172,5 +172,119 @@ func TestAcceptIsAllOrNothingWhenTheQueueIsFull(t *testing.T) {
 	accept(t, p, 2)
 	if p.Depth() != 5 {
 		t.Fatalf("depth = %d, want 5", p.Depth())
+	}
+}
+
+type flakyWriter struct {
+	mu       sync.Mutex
+	failures int
+	tokens   []string
+	written  int
+}
+
+func (w *flakyWriter) InsertEvents(_ context.Context, token string, events []event.Event) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.tokens = append(w.tokens, token)
+	if w.failures > 0 {
+		w.failures--
+		return errors.New("clickhouse unavailable")
+	}
+	w.written += len(events)
+	return nil
+}
+
+func (w *flakyWriter) setFailures(n int) {
+	w.mu.Lock()
+	w.failures = n
+	w.mu.Unlock()
+}
+
+func (w *flakyWriter) snapshot() (int, []string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.written, append([]string(nil), w.tokens...)
+}
+
+func startFlaky(t *testing.T, w *flakyWriter, capacity, batchSize int, drain time.Duration) (*Pipeline, context.CancelFunc, chan struct{}) {
+	t.Helper()
+	p := New(w, Options{
+		Capacity:      capacity,
+		BatchSize:     batchSize,
+		FlushInterval: time.Hour,
+		RetryMin:      time.Millisecond,
+		RetryMax:      5 * time.Millisecond,
+		DrainTimeout:  drain,
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { p.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+	return p, cancel, done
+}
+
+func eventually(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for: %s", what)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestRetriesAFailedBatchWithTheSameToken(t *testing.T) {
+	w := &flakyWriter{failures: 2}
+	p, _, _ := startFlaky(t, w, 100, 5, time.Second)
+
+	accept(t, p, 5)
+	eventually(t, "batch written", func() bool { n, _ := w.snapshot(); return n == 5 })
+
+	_, tokens := w.snapshot()
+	if len(tokens) != 3 {
+		t.Fatalf("attempts = %d, want 3 (2 failures + 1 success)", len(tokens))
+	}
+	if tokens[0] == "" || tokens[0] != tokens[1] || tokens[1] != tokens[2] {
+		t.Fatalf("tokens = %v, every retry must reuse the first token", tokens)
+	}
+}
+
+func TestQueueFillsUpWhileClickHouseIsDownAndEmptiesAfterwards(t *testing.T) {
+	w := &flakyWriter{failures: 1 << 30}
+	p, _, _ := startFlaky(t, w, 10, 5, time.Second)
+
+	accept(t, p, 5)
+	eventually(t, "flusher took the first batch", func() bool { return p.Depth() == 0 })
+	accept(t, p, 10)
+
+	err := p.Accept(context.Background(), chtest.Events(1, time.Now()))
+	if !errors.Is(err, ErrQueueFull) {
+		t.Fatalf("err = %v, want ErrQueueFull while ClickHouse is down", err)
+	}
+
+	w.setFailures(0)
+	eventually(t, "all 15 events written", func() bool { n, _ := w.snapshot(); return n == 15 })
+	if p.Dropped() != 0 {
+		t.Fatalf("dropped = %d, want 0", p.Dropped())
+	}
+}
+
+func TestShutdownGivesUpAfterTheDrainTimeout(t *testing.T) {
+	w := &flakyWriter{failures: 1 << 30}
+	p, cancel, done := startFlaky(t, w, 100, 5, 50*time.Millisecond)
+
+	accept(t, p, 7)
+	eventually(t, "flusher took the first batch", func() bool { _, tk := w.snapshot(); return len(tk) > 0 })
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not give up after the drain timeout")
+	}
+	if p.Dropped() != 7 {
+		t.Fatalf("dropped = %d, want 7", p.Dropped())
 	}
 }

@@ -79,6 +79,7 @@ func handleEvents(logger *slog.Logger, writeKey string, sink Sink, now func() ti
 
 		if err := sink.Accept(r.Context(), events); err != nil {
 			if errors.Is(err, ingest.ErrQueueFull) {
+				w.Header().Set("Retry-After", "1")
 				writeProblem(w, http.StatusServiceUnavailable, "Queue full", "the collector is busy, try again", nil)
 				return
 			}
