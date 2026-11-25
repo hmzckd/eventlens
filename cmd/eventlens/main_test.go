@@ -12,13 +12,17 @@ import (
 	"github.com/hmzckd/eventlens/internal/httpapi"
 )
 
+type okPinger struct{}
+
+func (okPinger) Ping(context.Context) error { return nil }
+
 func TestServeStopsCleanlyWhenContextIsCancelled(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	srv := &http.Server{Handler: httpapi.NewHandler(logger)}
+	srv := &http.Server{Handler: httpapi.NewHandler(httpapi.Options{Logger: logger, DB: okPinger{}})}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)

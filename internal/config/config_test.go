@@ -20,12 +20,20 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.LogLevel != slog.LevelInfo {
 		t.Errorf("LogLevel = %v, want info", cfg.LogLevel)
 	}
+	if cfg.ClickHouseAddr != "localhost:9000" || cfg.ClickHouseDatabase != "eventlens" {
+		t.Errorf("ClickHouse = %s/%s, want localhost:9000/eventlens", cfg.ClickHouseAddr, cfg.ClickHouseDatabase)
+	}
 }
 
 func TestLoadReadsEnvironment(t *testing.T) {
 	cfg, err := Load(env(map[string]string{
 		"EVENTLENS_ADDR":      "127.0.0.1:9090",
 		"EVENTLENS_LOG_LEVEL": "debug",
+
+		"EVENTLENS_CLICKHOUSE_ADDR":     "ch:9440",
+		"EVENTLENS_CLICKHOUSE_DATABASE": "analytics",
+		"EVENTLENS_CLICKHOUSE_USER":     "reader",
+		"EVENTLENS_CLICKHOUSE_PASSWORD": "secret",
 	}))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -36,12 +44,17 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	if cfg.LogLevel != slog.LevelDebug {
 		t.Errorf("LogLevel = %v, want debug", cfg.LogLevel)
 	}
+	if cfg.ClickHouseAddr != "ch:9440" || cfg.ClickHouseDatabase != "analytics" ||
+		cfg.ClickHouseUser != "reader" || cfg.ClickHousePassword != "secret" {
+		t.Errorf("ClickHouse settings not read: %+v", cfg)
+	}
 }
 
 func TestLoadRejectsBadValues(t *testing.T) {
 	cases := map[string]map[string]string{
-		"addr without port": {"EVENTLENS_ADDR": "localhost"},
-		"unknown log level": {"EVENTLENS_LOG_LEVEL": "loud"},
+		"addr without port":  {"EVENTLENS_ADDR": "localhost"},
+		"unknown log level":  {"EVENTLENS_LOG_LEVEL": "loud"},
+		"clickhouse no port": {"EVENTLENS_CLICKHOUSE_ADDR": "clickhouse"},
 	}
 	for name, values := range cases {
 		t.Run(name, func(t *testing.T) {

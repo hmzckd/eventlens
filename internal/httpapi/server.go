@@ -1,12 +1,22 @@
 package httpapi
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 )
 
-func NewHandler(logger *slog.Logger) http.Handler {
+type Pinger interface {
+	Ping(ctx context.Context) error
+}
+
+type Options struct {
+	Logger *slog.Logger
+	DB     Pinger
+}
+
+func NewHandler(opts Options) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", handleHealth)
-	return logRequests(logger, mux)
+	mux.Handle("GET /health", handleHealth(opts.DB))
+	return logRequests(opts.Logger, mux)
 }

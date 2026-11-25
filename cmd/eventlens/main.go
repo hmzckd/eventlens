@@ -14,6 +14,7 @@ import (
 
 	"github.com/hmzckd/eventlens/internal/config"
 	"github.com/hmzckd/eventlens/internal/httpapi"
+	"github.com/hmzckd/eventlens/internal/store"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -37,13 +38,29 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	db, err := store.Open(ctx, store.Options{
+		Addr:     cfg.ClickHouseAddr,
+		Database: cfg.ClickHouseDatabase,
+		Username: cfg.ClickHouseUser,
+		Password: cfg.ClickHousePassword,
+	})
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	if err := db.Migrate(ctx); err != nil {
+		return err
+	}
+	logger.Info("clickhouse ready", "addr", cfg.ClickHouseAddr, "database", cfg.ClickHouseDatabase)
+
 	listener, err := net.Listen("tcp", cfg.Addr)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", cfg.Addr, err)
 	}
 
 	srv := &http.Server{
-		Handler:           httpapi.NewHandler(logger),
+		Handler:           httpapi.NewHandler(httpapi.Options{Logger: logger, DB: db}),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}

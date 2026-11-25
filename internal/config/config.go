@@ -9,10 +9,22 @@ import (
 type Config struct {
 	Addr     string
 	LogLevel slog.Level
+
+	ClickHouseAddr     string
+	ClickHouseDatabase string
+	ClickHouseUser     string
+	ClickHousePassword string
 }
 
 func Load(getenv func(string) string) (Config, error) {
-	cfg := Config{Addr: ":8080", LogLevel: slog.LevelInfo}
+	cfg := Config{
+		Addr:               ":8080",
+		LogLevel:           slog.LevelInfo,
+		ClickHouseAddr:     "localhost:9000",
+		ClickHouseDatabase: "eventlens",
+		ClickHouseUser:     "eventlens",
+		ClickHousePassword: "eventlens",
+	}
 
 	if v := getenv("EVENTLENS_ADDR"); v != "" {
 		cfg.Addr = v
@@ -25,6 +37,22 @@ func Load(getenv func(string) string) (Config, error) {
 		if err := cfg.LogLevel.UnmarshalText([]byte(v)); err != nil {
 			return Config{}, fmt.Errorf("EVENTLENS_LOG_LEVEL must be debug, info, warn or error, got %q", v)
 		}
+	}
+
+	if v := getenv("EVENTLENS_CLICKHOUSE_ADDR"); v != "" {
+		cfg.ClickHouseAddr = v
+	}
+	if _, _, err := net.SplitHostPort(cfg.ClickHouseAddr); err != nil {
+		return Config{}, fmt.Errorf("EVENTLENS_CLICKHOUSE_ADDR must look like host:port, got %q", cfg.ClickHouseAddr)
+	}
+	if v := getenv("EVENTLENS_CLICKHOUSE_DATABASE"); v != "" {
+		cfg.ClickHouseDatabase = v
+	}
+	if v := getenv("EVENTLENS_CLICKHOUSE_USER"); v != "" {
+		cfg.ClickHouseUser = v
+	}
+	if v := getenv("EVENTLENS_CLICKHOUSE_PASSWORD"); v != "" {
+		cfg.ClickHousePassword = v
 	}
 
 	return cfg, nil

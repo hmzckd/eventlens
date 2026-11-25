@@ -8,3 +8,11 @@
 | OLAP | Online analytical processing. Few large queries that scan and aggregate millions of rows ("views per product in the last hour"). ClickHouse is built for this. |
 | Row store | Keeps all columns of a row next to each other on disk. Fast to fetch one whole row. |
 | Column store | Keeps each column in its own file. A query reads only the columns it names, and similar values next to each other compress very well. |
+| MergeTree | ClickHouse's main table engine. Every insert writes a new immutable part; background merges combine parts into bigger ones. |
+| Part | A sorted, immutable chunk of a table on disk, created by one insert (or one merge). Thousands of tiny parts make reads and merges slow. |
+| Partition | A group of parts that share a partition key value (here one calendar month). Old partitions can be dropped as a whole. |
+| Sorting key | `ORDER BY` of a MergeTree table. Rows are stored in this order, and the sparse primary index lets a query skip blocks whose key range cannot match. The closest thing ClickHouse has to an index. |
+| Granule | The smallest block a query reads (8192 rows by default). The primary index stores one entry per granule. |
+| LowCardinality | A column wrapper that stores each distinct value once in a dictionary and keeps small numbers in the column. Good for columns with few distinct values (event type, country, device). |
+| TTL | Time to live. ClickHouse deletes rows whose TTL expression is in the past during merges. Raw events live 30 days. |
+| Migration | A numbered SQL file under `internal/store/migrations` applied once, in order, and recorded in `schema_migrations`. |
