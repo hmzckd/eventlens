@@ -18,3 +18,8 @@
 | Migration | A numbered SQL file under `internal/store/migrations` applied once, in order, and recorded in `schema_migrations`. |
 | Write key | A secret that lets a client send events but read nothing. Sent in the `X-Write-Key` header and compared in constant time. |
 | `occurred_at` / `received_at` | When the visitor did it (client clock) and when the collector got it (server clock). The gap shows late events, e.g. a phone that was offline. |
+| Batch / flush | A group of events written with one INSERT. The flusher writes a batch when it holds 10,000 events or once a second. |
+| Bounded queue | The in-memory buffer between HTTP requests and the flusher. It has a fixed capacity, so memory cannot grow without limit. |
+| Reservation | Before a request enqueues its events, it adds their count to a counter. If the total would exceed the capacity, it takes them back and the whole request is refused, so a request is never half accepted. |
+| Graceful shutdown | On Ctrl+C or SIGTERM: stop taking requests, write everything still queued, then exit. |
+| Loss window | What can be lost on a crash: the events still in the queue. Documented in ADR 0002. |

@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strconv"
+	"time"
 )
+
+const maxEventsPerRequest = 500
 
 type Config struct {
 	Addr     string
@@ -16,6 +20,10 @@ type Config struct {
 	ClickHousePassword string
 
 	WriteKey string
+
+	QueueCapacity int
+	BatchSize     int
+	FlushInterval time.Duration
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -26,6 +34,9 @@ func Load(getenv func(string) string) (Config, error) {
 		ClickHouseDatabase: "eventlens",
 		ClickHouseUser:     "eventlens",
 		ClickHousePassword: "eventlens",
+		QueueCapacity:      50_000,
+		BatchSize:          10_000,
+		FlushInterval:      time.Second,
 	}
 
 	if v := getenv("EVENTLENS_ADDR"); v != "" {
@@ -62,5 +73,38 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("EVENTLENS_WRITE_KEY is required: clients send it in the X-Write-Key header")
 	}
 
+	var err error
+	if cfg.QueueCapacity, err = intVar(getenv, "EVENTLENS_QUEUE_CAPACITY", cfg.QueueCapacity); err != nil {
+		return Config{}, err
+	}
+	if cfg.BatchSize, err = intVar(getenv, "EVENTLENS_BATCH_SIZE", cfg.BatchSize); err != nil {
+		return Config{}, err
+	}
+	if v := getenv("EVENTLENS_FLUSH_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 {
+			return Config{}, fmt.Errorf("EVENTLENS_FLUSH_INTERVAL must be a positive duration such as 1s or 500ms, got %q", v)
+		}
+		cfg.FlushInterval = d
+	}
+	if cfg.QueueCapacity < maxEventsPerRequest {
+		return Config{}, fmt.Errorf("EVENTLENS_QUEUE_CAPACITY must be at least %d (one full request), got %d", maxEventsPerRequest, cfg.QueueCapacity)
+	}
+	if cfg.BatchSize > cfg.QueueCapacity {
+		return Config{}, fmt.Errorf("EVENTLENS_BATCH_SIZE (%d) must not be larger than EVENTLENS_QUEUE_CAPACITY (%d)", cfg.BatchSize, cfg.QueueCapacity)
+	}
+
 	return cfg, nil
+}
+
+func intVar(getenv func(string) string, key string, def int) (int, error) {
+	v := getenv(key)
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%s must be a positive whole number, got %q", key, v)
+	}
+	return n, nil
 }

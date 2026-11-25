@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hmzckd/eventlens/internal/event"
+	"github.com/hmzckd/eventlens/internal/ingest"
 )
 
 const testWriteKey = "test-write-key"
@@ -84,7 +85,7 @@ func TestPostEventsHandsValidEventsToTheSink(t *testing.T) {
 	sink := &recordingSink{}
 	rec := postEvents(t, newEventsHandler(sink), testWriteKey, batch(3))
 
-	if rec.Code != http.StatusOK {
+	if rec.Code != http.StatusAccepted {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
 	if !strings.Contains(rec.Body.String(), `"accepted":3`) {
@@ -154,7 +155,7 @@ func TestPostEventsChecksTheBatchSize(t *testing.T) {
 		})
 	}
 	rec := postEvents(t, newEventsHandler(&recordingSink{}), testWriteKey, batch(event.MaxBatch))
-	if rec.Code != http.StatusOK {
+	if rec.Code != http.StatusAccepted {
 		t.Fatalf("exactly %d events: status = %d", event.MaxBatch, rec.Code)
 	}
 }
@@ -168,8 +169,10 @@ func TestPostEventsRejectsHugeBodies(t *testing.T) {
 }
 
 func TestPostEventsReturns503WhenTheSinkFails(t *testing.T) {
-	rec := postEvents(t, newEventsHandler(&recordingSink{err: errors.New("clickhouse down")}), testWriteKey, batch(1))
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want 503", rec.Code)
+	for _, err := range []error{ingest.ErrQueueFull, errors.New("something else")} {
+		rec := postEvents(t, newEventsHandler(&recordingSink{err: err}), testWriteKey, batch(1))
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("%v: status = %d, want 503", err, rec.Code)
+		}
 	}
 }

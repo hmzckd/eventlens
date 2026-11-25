@@ -28,6 +28,9 @@ Requires Go 1.27 and Docker.
 | `EVENTLENS_CLICKHOUSE_USER` | `eventlens` |
 | `EVENTLENS_CLICKHOUSE_PASSWORD` | `eventlens` |
 | `EVENTLENS_WRITE_KEY` | required, no default |
+| `EVENTLENS_QUEUE_CAPACITY` | `50000` events |
+| `EVENTLENS_BATCH_SIZE` | `10000` events |
+| `EVENTLENS_FLUSH_INTERVAL` | `1s` |
 
 ## API
 
@@ -53,11 +56,11 @@ Requires Go 1.27 and Docker.
 
 | Status | When |
 |---|---|
-| 200 | All events stored, body `{"accepted": n}` |
+| 202 | All events queued, body `{"accepted": n}`. They reach ClickHouse within about a second. |
 | 400 | Bad JSON, no events, more than 500, or any invalid event (problem+json lists each one; none are stored) |
 | 401 | Missing or wrong `X-Write-Key` |
 | 413 | Body larger than 1 MiB |
-| 503 | ClickHouse could not store the events |
+| 503 | The queue is full, try again |
 
 Event types: `page_view`, `product_view`, `add_to_cart`, `checkout_start`, `purchase`. `occurred_at` may be at most
 5 minutes in the future and 24 hours in the past. Prices are in kuruş.

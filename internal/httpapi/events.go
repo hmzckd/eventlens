@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hmzckd/eventlens/internal/event"
+	"github.com/hmzckd/eventlens/internal/ingest"
 )
 
 const maxBodyBytes = 1 << 20
@@ -77,20 +78,18 @@ func handleEvents(logger *slog.Logger, writeKey string, sink Sink, now func() ti
 		}
 
 		if err := sink.Accept(r.Context(), events); err != nil {
-			logger.Error("store events", "count", len(events), "error", err)
-			writeProblem(w, http.StatusServiceUnavailable, "Storage unavailable", "events could not be stored, try again", nil)
+			if errors.Is(err, ingest.ErrQueueFull) {
+				writeProblem(w, http.StatusServiceUnavailable, "Queue full", "the collector is busy, try again", nil)
+				return
+			}
+			logger.Error("accept events", "count", len(events), "error", err)
+			writeProblem(w, http.StatusServiceUnavailable, "Unavailable", "events could not be accepted, try again", nil)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]int{"accepted": len(events)})
+		writeJSON(w, http.StatusAccepted, map[string]int{"accepted": len(events)})
 	}
 }
 
 func validWriteKey(got, want string) bool {
 	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
-}
-
-type SinkFunc func(ctx context.Context, events []event.Event) error
-
-func (f SinkFunc) Accept(ctx context.Context, events []event.Event) error {
-	return f(ctx, events)
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/hmzckd/eventlens/internal/config"
 	"github.com/hmzckd/eventlens/internal/httpapi"
+	"github.com/hmzckd/eventlens/internal/ingest"
 	"github.com/hmzckd/eventlens/internal/store"
 )
 
@@ -54,8 +55,23 @@ func run() error {
 	}
 	logger.Info("clickhouse ready", "addr", cfg.ClickHouseAddr, "database", cfg.ClickHouseDatabase)
 
+	pipeline := ingest.New(db, ingest.Options{
+		Capacity:      cfg.QueueCapacity,
+		BatchSize:     cfg.BatchSize,
+		FlushInterval: cfg.FlushInterval,
+		Logger:        logger,
+	})
+	pipelineCtx, stopPipeline := context.WithCancel(context.Background())
+	pipelineDone := make(chan struct{})
+	go func() {
+		pipeline.Run(pipelineCtx)
+		close(pipelineDone)
+	}()
+
 	listener, err := net.Listen("tcp", cfg.Addr)
 	if err != nil {
+		stopPipeline()
+		<-pipelineDone
 		return fmt.Errorf("listen on %s: %w", cfg.Addr, err)
 	}
 
@@ -64,13 +80,20 @@ func run() error {
 			Logger:   logger,
 			DB:       db,
 			WriteKey: cfg.WriteKey,
-			Sink:     httpapi.SinkFunc(db.InsertEvents),
+			Sink:     pipeline,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 
-	return serve(ctx, logger, srv, listener)
+	serveErr := serve(ctx, logger, srv, listener)
+
+	stopPipeline()
+	<-pipelineDone
+	if serveErr == nil {
+		logger.Info("eventlens stopped cleanly")
+	}
+	return serveErr
 }
 
 func serve(ctx context.Context, logger *slog.Logger, srv *http.Server, listener net.Listener) error {
@@ -96,6 +119,6 @@ func serve(ctx context.Context, logger *slog.Logger, srv *http.Server, listener 
 	if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("http server: %w", err)
 	}
-	logger.Info("eventlens stopped cleanly")
+	logger.Info("http server stopped")
 	return nil
 }
