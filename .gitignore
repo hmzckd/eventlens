@@ -1,0 +1,11 @@
+/eventlens
+/eventlens.exe
+/loadgen
+/loadgen.exe
+/bench
+/bench.exe
+*.test
+*.out
+.env
+.idea/
+.vscode/
