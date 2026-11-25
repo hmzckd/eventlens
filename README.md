@@ -17,6 +17,23 @@ Requires Go 1.27 and Docker.
    ```
 3. Open `http://localhost:8080/health`
 
+## Load generator
+
+`cmd/loadgen` plays realistic shop sessions against the collector and retries on `503`:
+
+```
+go run ./cmd/loadgen -rate 5000 -duration 1m
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-rate` | `2000` | events per second |
+| `-batch` | `200` | events per request (max 500) |
+| `-workers` | `8` | requests in flight |
+| `-products` | `200` | products in the shop; popularity follows a Zipf distribution |
+| `-duration` | `0` | stop after this long, `0` runs until Ctrl+C |
+| `-key` | `$EVENTLENS_WRITE_KEY` | write key |
+
 ## Configuration
 
 | Variable | Default |

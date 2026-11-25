@@ -27,3 +27,6 @@
 | Unknown outcome | An insert whose answer was lost. The data may or may not be stored, so the only safe move is to retry in a way that cannot duplicate. |
 | Deduplication token | `insert_deduplication_token`: a random id per batch, reused on every retry. ClickHouse skips a block whose token it has seen within `non_replicated_deduplication_window`. |
 | Exponential backoff | Waiting longer after each failed attempt (100 ms, 200 ms, 400 ms ... up to 5 s) so a struggling server is not hammered. |
+| Session | One visit to the shop, identified by `session_id`. The load generator plays whole sessions: a page view, a few product views, maybe add to cart, checkout and purchase. |
+| Funnel | The steps from product view to purchase. Each step has fewer sessions than the one before; the drop between steps is what a shop wants to improve. |
+| Zipf distribution | A "few items get most of the attention" distribution. The load generator picks products with it, so a handful of products get most of the views, as in a real shop. |
