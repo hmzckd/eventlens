@@ -129,3 +129,36 @@ func TestRunSendsEachEventWhenItHappens(t *testing.T) {
 		t.Fatalf("only %d of %d events arrived within half a second", onTime, len(delays))
 	}
 }
+
+func TestPlayStampsEachEventWhenItIsSent(t *testing.T) {
+	planned := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	var events []event.Input
+	for i := 0; i < 3; i++ {
+		events = append(events, event.Input{
+			EventID:    "e",
+			Type:       event.PageView,
+			OccurredAt: planned.Add(time.Duration(i) * 30 * time.Millisecond).Format(time.RFC3339Nano),
+		})
+	}
+	happened := make(chan event.Input, len(events))
+
+	start := time.Now()
+	play(context.Background(), events, happened)
+	end := time.Now()
+
+	var last time.Time
+	for i := range events {
+		in := <-happened
+		at, err := time.Parse(time.RFC3339Nano, in.OccurredAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if at.Before(start.Add(-time.Millisecond)) || at.After(end.Add(time.Millisecond)) {
+			t.Fatalf("event %d stamped %s, want the moment it was sent", i, at)
+		}
+		if i > 0 && at.Sub(last) < 25*time.Millisecond {
+			t.Fatalf("event %d came %s after the previous one, want the planned 30ms gap", i, at.Sub(last))
+		}
+		last = at
+	}
+}

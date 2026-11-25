@@ -118,18 +118,23 @@ func Run(ctx context.Context, cfg Config, stats *Stats) {
 }
 
 func play(ctx context.Context, events []event.Input, happened chan<- event.Input) {
-	for _, in := range events {
-		at, err := time.Parse(time.RFC3339Nano, in.OccurredAt)
+	var previous time.Time
+	for i, in := range events {
+		planned, err := time.Parse(time.RFC3339Nano, in.OccurredAt)
 		if err != nil {
 			panic(err)
 		}
-		wait := time.NewTimer(time.Until(at))
-		select {
-		case <-wait.C:
-		case <-ctx.Done():
-			wait.Stop()
-			return
+		if i > 0 {
+			wait := time.NewTimer(planned.Sub(previous))
+			select {
+			case <-wait.C:
+			case <-ctx.Done():
+				wait.Stop()
+				return
+			}
 		}
+		previous = planned
+		in.OccurredAt = time.Now().UTC().Format(time.RFC3339Nano)
 		select {
 		case happened <- in:
 		case <-ctx.Done():
