@@ -29,6 +29,7 @@ type Options struct {
 	Now      func() time.Time
 	Recorder Recorder
 	Metrics  http.Handler
+	Stats    Stats
 }
 
 func NewHandler(opts Options) http.Handler {
@@ -41,6 +42,9 @@ func NewHandler(opts Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /health", handleHealth(opts.DB))
 	mux.Handle("POST /v1/events", handleEvents(opts))
+	mux.Handle("GET /v1/stats/top-products", handleTopProducts(opts))
+	mux.Handle("GET /v1/stats/funnel", handleFunnel(opts))
+	mux.Handle("GET /v1/stats/active-users", handleActiveUsers(opts))
 	if opts.Metrics != nil {
 		mux.Handle("GET /metrics", opts.Metrics)
 	}

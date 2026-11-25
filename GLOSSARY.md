@@ -34,3 +34,6 @@
 | Counter / gauge / histogram | Counter only goes up (events accepted). Gauge goes up and down (queue depth). Histogram counts observations in buckets so percentiles can be computed (flush duration). |
 | p95 | 95th percentile: 95 % of flushes were at least this fast. Shows the slow tail that an average hides. |
 | Provisioning | Grafana data sources and dashboards defined as files in the repository and loaded on start, instead of clicking them together by hand. |
+| `windowFunnel` | ClickHouse aggregate that, per session, returns how many funnel steps happened in order within a time window (here 1 hour). |
+| `uniq` vs `uniqExact` | `uniq` estimates the number of distinct values with a small fixed amount of memory (error well under 1 %). `uniqExact` keeps every value and is exact but slower and memory hungry. |
+| Client duplicate | The same event (same `event_id`) sent twice by a client, for example after a timeout. Stored twice; `count()` sees both, `uniqExact(event_id)` sees one. |

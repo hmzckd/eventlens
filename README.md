@@ -17,6 +17,18 @@ Requires Go 1.27 and Docker.
    ```
 3. Open `http://localhost:8080/health`
 
+### Stats
+
+No write key needed; meant for dashboards on a private network.
+
+| Endpoint | Default window | Answer |
+|---|---|---|
+| `GET /v1/stats/top-products?window=1h&limit=10` | `1h` | products by views, with distinct visitors |
+| `GET /v1/stats/funnel?window=24h` | `24h` | sessions per step (view, cart, checkout, purchase) in order within one hour, with conversion rates |
+| `GET /v1/stats/active-users?window=5m` | `5m` | distinct sessions with any event |
+
+`window` takes Go durations (`15m`, `2h`) or days (`7d`), from 1 minute to 30 days.
+
 ## Observability
 
 The collector exposes Prometheus metrics on `/metrics`. Prometheus (`http://localhost:9090`) scrapes the collector

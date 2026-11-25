@@ -87,6 +87,7 @@ func run() error {
 			Sink:     pipeline,
 			Recorder: m,
 			Metrics:  m.Handler(),
+			Stats:    db,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
