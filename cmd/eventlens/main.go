@@ -60,7 +60,12 @@ func run() error {
 	}
 
 	srv := &http.Server{
-		Handler:           httpapi.NewHandler(httpapi.Options{Logger: logger, DB: db}),
+		Handler: httpapi.NewHandler(httpapi.Options{
+			Logger:   logger,
+			DB:       db,
+			WriteKey: cfg.WriteKey,
+			Sink:     httpapi.SinkFunc(db.InsertEvents),
+		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}

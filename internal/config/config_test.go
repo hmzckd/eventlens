@@ -6,7 +6,15 @@ import (
 )
 
 func env(values map[string]string) func(string) string {
-	return func(key string) string { return values[key] }
+	return func(key string) string {
+		if key == "EVENTLENS_WRITE_KEY" {
+			if v, ok := values[key]; ok {
+				return v
+			}
+			return "test-write-key"
+		}
+		return values[key]
+	}
 }
 
 func TestLoadDefaults(t *testing.T) {
@@ -55,6 +63,7 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		"addr without port":  {"EVENTLENS_ADDR": "localhost"},
 		"unknown log level":  {"EVENTLENS_LOG_LEVEL": "loud"},
 		"clickhouse no port": {"EVENTLENS_CLICKHOUSE_ADDR": "clickhouse"},
+		"missing write key":  {"EVENTLENS_WRITE_KEY": ""},
 	}
 	for name, values := range cases {
 		t.Run(name, func(t *testing.T) {

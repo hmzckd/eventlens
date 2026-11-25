@@ -14,6 +14,8 @@ type Config struct {
 	ClickHouseDatabase string
 	ClickHouseUser     string
 	ClickHousePassword string
+
+	WriteKey string
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -53,6 +55,11 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if v := getenv("EVENTLENS_CLICKHOUSE_PASSWORD"); v != "" {
 		cfg.ClickHousePassword = v
+	}
+
+	cfg.WriteKey = getenv("EVENTLENS_WRITE_KEY")
+	if cfg.WriteKey == "" {
+		return Config{}, fmt.Errorf("EVENTLENS_WRITE_KEY is required: clients send it in the X-Write-Key header")
 	}
 
 	return cfg, nil

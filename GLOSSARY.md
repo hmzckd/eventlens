@@ -16,3 +16,5 @@
 | LowCardinality | A column wrapper that stores each distinct value once in a dictionary and keeps small numbers in the column. Good for columns with few distinct values (event type, country, device). |
 | TTL | Time to live. ClickHouse deletes rows whose TTL expression is in the past during merges. Raw events live 30 days. |
 | Migration | A numbered SQL file under `internal/store/migrations` applied once, in order, and recorded in `schema_migrations`. |
+| Write key | A secret that lets a client send events but read nothing. Sent in the `X-Write-Key` header and compared in constant time. |
+| `occurred_at` / `received_at` | When the visitor did it (client clock) and when the collector got it (server clock). The gap shows late events, e.g. a phone that was offline. |

@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/google/uuid"
 	"github.com/testcontainers/testcontainers-go"
 	chmodule "github.com/testcontainers/testcontainers-go/modules/clickhouse"
 
+	"github.com/hmzckd/eventlens/internal/event"
 	"github.com/hmzckd/eventlens/internal/store"
 )
 
@@ -107,4 +110,23 @@ func dropDatabase(name string) {
 	}
 	defer conn.Close()
 	_ = conn.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name)
+}
+
+func Events(n int, at time.Time) []event.Event {
+	out := make([]event.Event, n)
+	for i := range out {
+		out[i] = event.Event{
+			EventID:    uuid.New(),
+			Type:       event.ProductView,
+			OccurredAt: at.UTC(),
+			ReceivedAt: at.UTC(),
+			SessionID:  fmt.Sprintf("s-%d", i%50),
+			ProductID:  fmt.Sprintf("p-%d", i%10),
+			Category:   "shoes",
+			Country:    "TR",
+			Device:     "mobile",
+			URL:        fmt.Sprintf("/products/p-%d", i%10),
+		}
+	}
+	return out
 }
