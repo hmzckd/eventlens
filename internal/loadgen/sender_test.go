@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/hmzckd/eventlens/internal/event"
 )
 
 func TestRunRetriesTheSameBodyAfterA503(t *testing.T) {
@@ -41,7 +43,7 @@ func TestRunRetriesTheSameBodyAfterA503(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	var stats Stats
-	Run(ctx, Config{URL: srv.URL, WriteKey: "k", Rate: 1000, BatchSize: 20, Workers: 1, Seed: 1, Products: 50}, &stats)
+	Run(ctx, Config{URL: srv.URL, WriteKey: "k", Rate: 5000, BatchSize: 20, Workers: 1, Seed: 1, Products: 50}, &stats)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -71,9 +73,59 @@ func TestRunCountsRejectedBatchesAsFailed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	var stats Stats
-	Run(ctx, Config{URL: srv.URL, WriteKey: "wrong", Rate: 1000, BatchSize: 10, Workers: 2, Seed: 1, Products: 50}, &stats)
+	Run(ctx, Config{URL: srv.URL, WriteKey: "wrong", Rate: 5000, BatchSize: 10, Workers: 2, Seed: 1, Products: 50}, &stats)
 
 	if stats.Failed.Load() == 0 || stats.Accepted.Load() != 0 {
 		t.Fatalf("failed = %d, accepted = %d", stats.Failed.Load(), stats.Accepted.Load())
+	}
+}
+
+func TestRunSendsEachEventWhenItHappens(t *testing.T) {
+	var mu sync.Mutex
+	var delays []time.Duration
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received := time.Now()
+		var req struct {
+			Events []event.Input `json:"events"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		mu.Lock()
+		defer mu.Unlock()
+		for _, in := range req.Events {
+			at, err := time.Parse(time.RFC3339Nano, in.OccurredAt)
+			if err != nil {
+				t.Errorf("bad occurred_at %q", in.OccurredAt)
+				continue
+			}
+			delays = append(delays, received.Sub(at))
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	var stats Stats
+	Run(ctx, Config{URL: srv.URL, WriteKey: "k", Rate: 2000, BatchSize: 50, Workers: 2, Seed: 1, Products: 50}, &stats)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(delays) < 100 {
+		t.Fatalf("only %d events were sent", len(delays))
+	}
+	onTime := 0
+	for _, d := range delays {
+		if d < -50*time.Millisecond {
+			t.Fatalf("an event was sent %s before it happened", -d)
+		}
+		if d > 2*time.Second {
+			t.Fatalf("an event was sent %s after it happened", d)
+		}
+		if d < 500*time.Millisecond {
+			onTime++
+		}
+	}
+	if onTime < len(delays)*9/10 {
+		t.Fatalf("only %d of %d events arrived within half a second", onTime, len(delays))
 	}
 }

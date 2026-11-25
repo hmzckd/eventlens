@@ -18,7 +18,8 @@ dashboards show the shop and the health of the pipeline live.
 - **Per-minute rollup** filled by a materialized view (`countState` / `uniqState`), kept for a year and backfilled
   on first start.
 - **Stats API** for top products, the purchase funnel (`windowFunnel`) and active sessions.
-- **Load generator** that plays realistic sessions (Zipf product popularity, funnel drop-off) and honours `503`.
+- **Load generator** that plays realistic sessions in real time (Zipf product popularity, funnel drop-off) and
+  honours `503`.
 - **Grafana dashboards as code**: a shop dashboard on ClickHouse and a pipeline dashboard on Prometheus metrics.
 - **Demo shop page** that sends events as you click.
 - **Benchmark** that loads the same 20 million events into PostgreSQL and ClickHouse and compares them.
@@ -187,7 +188,7 @@ No write key needed; meant for dashboards on a private network.
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `-rate` | `2000` | events per second |
+| `-rate` | `2000` | events per second, reached after about 20 seconds because each session unfolds in real time |
 | `-batch` | `200` | events per request (max 500) |
 | `-workers` | `8` | requests in flight |
 | `-products` | `200` | products in the shop; popularity follows a Zipf distribution |

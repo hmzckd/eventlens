@@ -337,7 +337,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT product_id, countMerge(views) AS views_total, uniqMerge(visitors) AS visitors_total\nFROM product_views_1m\nWHERE minute >= toStartOfMinute($__fromTime) AND minute <= $__toTime\nGROUP BY product_id\nORDER BY views_total DESC, product_id\nLIMIT 10"
+          "rawSql": "SELECT product_id, countMerge(views) AS views_total\nFROM product_views_1m\nWHERE minute >= toStartOfMinute($__fromTime) AND minute <= $__toTime\nGROUP BY product_id\nORDER BY views_total DESC, product_id\nLIMIT 10"
         }
       ]
     },

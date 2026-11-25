@@ -60,12 +60,12 @@ func (g *Generator) Products() []Product {
 	return g.products
 }
 
-func (g *Generator) Session(now time.Time) []event.Input {
+func (g *Generator) Session(start time.Time) []event.Input {
 	s := session{
 		id:      uuid.NewString(),
 		country: pick(g.rng, countries),
 		device:  pick(g.rng, devices),
-		at:      now.Add(-30 * time.Second),
+		at:      start,
 		rng:     g.rng,
 	}
 	if g.rng.Float64() < loggedInRate {
@@ -103,7 +103,9 @@ type session struct {
 }
 
 func (s *session) add(typ string, p Product, url string) {
-	s.at = s.at.Add(time.Duration(500+s.rng.Intn(2500)) * time.Millisecond)
+	if len(s.events) > 0 {
+		s.at = s.at.Add(time.Duration(500+s.rng.Intn(2500)) * time.Millisecond)
+	}
 	in := event.Input{
 		EventID:    uuid.NewString(),
 		Type:       typ,

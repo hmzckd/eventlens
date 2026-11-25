@@ -33,6 +33,11 @@ type Stats struct {
 	Requests atomic.Int64
 }
 
+const (
+	startEvery = 100 * time.Millisecond
+	flushEvery = time.Second
+)
+
 func Run(ctx context.Context, cfg Config, stats *Stats) {
 	if cfg.Client == nil {
 		cfg.Client = &http.Client{Timeout: 10 * time.Second}
@@ -42,43 +47,93 @@ func Run(ctx context.Context, cfg Config, stats *Stats) {
 	}
 
 	work := make(chan []byte)
-	var wg sync.WaitGroup
+	var workers sync.WaitGroup
 	for i := 0; i < cfg.Workers; i++ {
-		wg.Add(1)
+		workers.Add(1)
 		go func() {
-			defer wg.Done()
+			defer workers.Done()
 			for body := range work {
 				send(ctx, cfg, stats, body)
 			}
 		}()
 	}
 
+	happened := make(chan event.Input, cfg.BatchSize)
+	var visitors sync.WaitGroup
 	gen := NewGenerator(cfg.Seed, cfg.Products)
-	interval := time.Duration(float64(time.Second) * float64(cfg.BatchSize) / float64(cfg.Rate))
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	owed := 0.0
+	last := time.Now().Add(-startEvery)
+	startSessions := func(now time.Time) {
+		owed = min(owed+float64(cfg.Rate)*now.Sub(last).Seconds(), float64(cfg.Rate))
+		last = now
+		for owed > 0 {
+			events := gen.Session(now)
+			owed -= float64(len(events))
+			visitors.Add(1)
+			go func() {
+				defer visitors.Done()
+				play(ctx, events, happened)
+			}()
+		}
+	}
 
-	var pending []event.Input
+	var batch []event.Input
+	flush := func() {
+		body, err := json.Marshal(map[string]any{"events": batch})
+		if err != nil {
+			panic(err)
+		}
+		batch = nil
+		select {
+		case work <- body:
+		case <-ctx.Done():
+		}
+	}
+
+	starts := time.NewTicker(startEvery)
+	defer starts.Stop()
+	flushes := time.NewTicker(flushEvery)
+	defer flushes.Stop()
+	startSessions(time.Now())
 	for {
 		select {
 		case <-ctx.Done():
 			close(work)
-			wg.Wait()
+			workers.Wait()
+			visitors.Wait()
 			return
-		case <-ticker.C:
+		case now := <-starts.C:
+			startSessions(now)
+		case in := <-happened:
+			batch = append(batch, in)
+			if len(batch) == cfg.BatchSize {
+				flush()
+			}
+		case <-flushes.C:
+			if len(batch) > 0 {
+				flush()
+			}
 		}
-		for len(pending) < cfg.BatchSize {
-			pending = append(pending, gen.Session(time.Now())...)
-		}
-		body, err := json.Marshal(map[string]any{"events": pending[:cfg.BatchSize]})
+	}
+}
+
+func play(ctx context.Context, events []event.Input, happened chan<- event.Input) {
+	for _, in := range events {
+		at, err := time.Parse(time.RFC3339Nano, in.OccurredAt)
 		if err != nil {
 			panic(err)
 		}
-		pending = append(pending[:0], pending[cfg.BatchSize:]...)
-
+		wait := time.NewTimer(time.Until(at))
 		select {
-		case work <- body:
+		case <-wait.C:
 		case <-ctx.Done():
+			wait.Stop()
+			return
+		}
+		select {
+		case happened <- in:
+		case <-ctx.Done():
+			return
 		}
 	}
 }
